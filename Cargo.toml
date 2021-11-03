@@ -13,3 +13,4 @@ parity-scale-codec = { version = "*" }
 serde              = { version = "*", features = ["derive"] }
 serde_json         = { version = "*" }
 subrpcer           = { version = "*", features = ["ureq-client"] }
+tungstenite        = { version = "*", features = ["rustls-tls-native-roots"] }

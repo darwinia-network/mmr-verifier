@@ -1,5 +1,6 @@
 // --- std ---
 use std::{
+	collections::VecDeque,
 	fmt,
 	fs::File,
 	io::{Read, Write},
@@ -10,7 +11,8 @@ use csv::Reader;
 use parity_scale_codec::Encode;
 use serde::Deserialize;
 use serde_json::Value;
-use subrpcer::client::u;
+use subrpcer::{chain, client::u};
+use tungstenite::Message;
 // --- github.com ---
 use mmr::{
 	helper,
@@ -127,13 +129,13 @@ fn insert_node_with_rpc(uri: impl AsRef<str>, pos: u64, hash: String) {
 	}
 }
 
-fn build_mem_store(start_at: u64) -> MemStore<Hash> {
+fn build_mem_store(block_number: u64) -> MemStore<Hash> {
 	let mem_store = MemStore::default();
-	let mmr_size = mmr::leaf_index_to_mmr_size(start_at);
+	let mmr_size = mmr::leaf_index_to_mmr_size(block_number);
 	let peaks = helper::get_peaks(mmr_size);
 
 	for pos in peaks {
-		let hash = get_node_from_rpc("http://localhost:20000", pos);
+		let hash = get_node_from_rpc("https://rpc-alt.darwinia.network", pos);
 		let mut mem_store = mem_store.0.borrow_mut();
 
 		mem_store.insert(pos, array_bytes::hex_into_unchecked(hash));
@@ -173,11 +175,10 @@ where
 	f.sync_all().unwrap();
 }
 
-#[allow(unused)]
-fn gen_nodes() {
-	let start_at = 4_999_999;
-	let mem_store = build_mem_store(start_at);
-	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(mmr::leaf_index_to_mmr_size(start_at), mem_store);
+fn gen_nodes(block_number: u64) {
+	let mem_store = build_mem_store(block_number);
+	let mut mem_mmr =
+		<MemMMR<Hash, Hasher>>::new(mmr::leaf_index_to_mmr_size(block_number), mem_store);
 	let records = Record::read_csv();
 
 	for Record {
@@ -194,23 +195,100 @@ fn gen_nodes() {
 		mem_mmr.push(array_bytes::hex_into_unchecked(hash)).unwrap();
 	}
 
-	write_nodes(mem_mmr.store(), 11272187, 11403258);
+	write_nodes(mem_mmr.store(), 0, 0);
 }
 
-fn check_nodes() {
+fn correct_nodes() {
 	let nodes = read_nodes();
 
 	for (pos, expected_hash) in nodes {
-		let hash = get_node_from_rpc("http://localhost:20000", pos);
+		let hash = get_node_from_rpc("https://rpc-alt.darwinia.network", pos);
 
 		if &expected_hash != &hash {
 			dbg!((pos, &expected_hash, &hash));
 
-			insert_node_with_rpc("http://localhost:20000", pos, expected_hash);
+			insert_node_with_rpc("https://rpc-alt.darwinia.network", pos, expected_hash);
+		}
+	}
+}
+
+fn correct_node_live(
+	uri: &str,
+	mut file: File,
+	mut hashes: VecDeque<String>,
+	mut mem_mmr: MemMMR<Hash, Hasher>,
+	mut start_at: u64,
+) {
+	if let Ok((mut ws, _)) = tungstenite::connect(uri) {
+		for block_number in start_at.. {
+			if ws
+				.write_message(Message::Binary(
+					serde_json::to_vec(&chain::get_block_hash(block_number)).unwrap(),
+				))
+				.is_err()
+			{
+				return correct_node_live(uri, file, hashes, mem_mmr, block_number);
+			}
+
+			if let Ok(msg) = ws.read_message() {
+				let result =
+					serde_json::from_slice::<Value>(&msg.into_data()).unwrap()["result"].take();
+				let hex = result.as_str().unwrap();
+				let hash = array_bytes::hex_into_unchecked(hex);
+
+				hashes.push_back(hex.into());
+				mem_mmr.push(hash).unwrap();
+			} else {
+				return correct_node_live(uri, file, hashes, mem_mmr, block_number);
+			}
+
+			if block_number % 100 == 0 {
+				let start_block_number = block_number - 10;
+				let end_block_number = block_number;
+				let mut start_pos = mmr::leaf_index_to_mmr_size(start_block_number);
+
+				for block_number in (start_block_number + 1)..=end_block_number {
+					let block_hash = hashes.pop_front().unwrap();
+					let end_pos = mmr::leaf_index_to_mmr_size(block_number);
+					let node_hashes = (start_pos..end_pos)
+						.into_iter()
+						.map(|pos| {
+							let node_hash = mem_mmr.store().get_elem(pos).unwrap().unwrap();
+
+							format!(
+								"pos:{}-node_hash:{}",
+								pos,
+								array_bytes::bytes2hex("0x", node_hash.0)
+							)
+						})
+						.collect::<Vec<_>>()
+						.join(",");
+
+					writeln!(
+						file,
+						"block_number:{}-block_hash:{}-{}",
+						block_number, block_hash, node_hashes
+					)
+					.unwrap();
+
+					start_pos = end_pos;
+				}
+
+				dbg!(block_number);
+			}
 		}
 	}
 }
 
 fn main() {
-	check_nodes();
+	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(0, MemStore::default());
+	let mut file = File::create("mmr.data").unwrap();
+
+	correct_node_live(
+		"ws://hel.xavier.zone:39998",
+		file,
+		VecDeque::new(),
+		mem_mmr,
+		0,
+	);
 }

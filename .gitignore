@@ -12,5 +12,4 @@ target
 node_modules
 
 # Test Data
-data.csv
-nodes
+mmr.data
