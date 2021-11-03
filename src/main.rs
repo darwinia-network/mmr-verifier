@@ -133,7 +133,7 @@ fn build_mem_store(start_at: u64) -> MemStore<Hash> {
 	let peaks = helper::get_peaks(mmr_size);
 
 	for pos in peaks {
-		let hash = get_node_from_rpc("http://107.167.190.243:9977", pos);
+		let hash = get_node_from_rpc("http://localhost:20000", pos);
 		let mut mem_store = mem_store.0.borrow_mut();
 
 		mem_store.insert(pos, array_bytes::hex_into_unchecked(hash));
@@ -201,11 +201,13 @@ fn check_nodes() {
 	let nodes = read_nodes();
 
 	for (pos, expected_hash) in nodes {
-		let hash = get_node_from_rpc("http://107.167.190.243:9977", pos);
+		let hash = get_node_from_rpc("http://localhost:20000", pos);
 
-		dbg!((pos, &expected_hash, &hash));
+		if &expected_hash != &hash {
+			dbg!((pos, &expected_hash, &hash));
 
-		assert_eq!(expected_hash, hash);
+			insert_node_with_rpc("http://localhost:20000", pos, hash);
+		}
 	}
 }
 
