@@ -284,11 +284,5 @@ fn main() {
 	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(0, MemStore::default());
 	let mut file = File::create("mmr.data").unwrap();
 
-	correct_node_live(
-		"ws://hel.xavier.zone:39998",
-		file,
-		VecDeque::new(),
-		mem_mmr,
-		0,
-	);
+	correct_node_live("ws://localhost:39998", file, VecDeque::new(), mem_mmr, 0);
 }
