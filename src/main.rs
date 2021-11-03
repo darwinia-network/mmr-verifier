@@ -206,7 +206,7 @@ fn check_nodes() {
 		if &expected_hash != &hash {
 			dbg!((pos, &expected_hash, &hash));
 
-			insert_node_with_rpc("http://localhost:20000", pos, hash);
+			insert_node_with_rpc("http://localhost:20000", pos, expected_hash);
 		}
 	}
 }
