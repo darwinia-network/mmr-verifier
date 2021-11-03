@@ -384,9 +384,9 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "subrpcer"
-version = "0.4.1"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5deb9d656b811c2a75cef9eb9cb47e7139e88a0b775e1734b7de48cd537cb65"
+checksum = "b968be843ba53518b7e506bb662c2f3db76c01a2196d9459f620c187c1f59270"
 dependencies = [
  "serde",
  "serde_json",

@@ -1,5 +1,9 @@
 // --- std ---
-use std::fmt;
+use std::{
+	fmt,
+	fs::File,
+	io::{Read, Write},
+};
 // --- crates.io ---
 use blake2_rfc::blake2b;
 use csv::Reader;
@@ -11,7 +15,7 @@ use subrpcer::client::u;
 use mmr::{
 	helper,
 	util::{MemMMR, MemStore},
-	Merge,
+	MMRStore, Merge,
 };
 
 fn offchain_key(pos: u64) -> String {
@@ -80,31 +84,56 @@ impl Record {
 	}
 }
 
+fn get_node_from_rpc(uri: impl AsRef<str>, pos: u64) -> String {
+	let k = offchain_key(pos);
+	let uri = uri.as_ref();
+	let rpc = subrpcer::rpc(
+		0,
+		"offchain_localStorageGet",
+		serde_json::json!(["PERSISTENT", k]),
+	);
+
+	loop {
+		if let Ok(response) = u::send_rpc(uri, &rpc) {
+			let hash = response.into_json::<Value>().unwrap()["result"]
+				.as_str()
+				.unwrap()
+				.to_string();
+
+			// dbg!((pos, &hash));
+
+			return hash;
+		}
+	}
+}
+
+fn insert_node_with_rpc(uri: impl AsRef<str>, pos: u64, hash: String) {
+	let k = offchain_key(pos);
+	let uri = uri.as_ref();
+	let rpc = subrpcer::rpc(
+		0,
+		"offchain_localStorageSet",
+		serde_json::json!(["PERSISTENT", k, hash]),
+	);
+
+	loop {
+		if let Ok(response) = u::send_rpc(uri, &rpc) {
+			let result = &response.into_json::<Value>().unwrap()["result"];
+
+			dbg!(result);
+
+			break;
+		}
+	}
+}
+
 fn build_mem_store(start_at: u64) -> MemStore<Hash> {
 	let mem_store = MemStore::default();
-	let size = mmr::leaf_index_to_mmr_size(start_at);
-
-	dbg!(&size);
-
-	let peaks = helper::get_peaks(size);
+	let mmr_size = mmr::leaf_index_to_mmr_size(start_at);
+	let peaks = helper::get_peaks(mmr_size);
 
 	for pos in peaks {
-		let k = offchain_key(pos);
-		let rpc = subrpcer::rpc(
-			0,
-			"offchain_localStorageGet",
-			serde_json::json!(["PERSISTENT", k]),
-		);
-		let hash = u::send_rpc("http://107.167.190.243:9977", rpc)
-			.unwrap()
-			.into_json::<Value>()
-			.unwrap()["result"]
-			.as_str()
-			.unwrap()
-			.to_string();
-
-		dbg!((pos, &hash));
-
+		let hash = get_node_from_rpc("http://107.167.190.243:9977", pos);
 		let mut mem_store = mem_store.0.borrow_mut();
 
 		mem_store.insert(pos, array_bytes::hex_into_unchecked(hash));
@@ -113,22 +142,39 @@ fn build_mem_store(start_at: u64) -> MemStore<Hash> {
 	mem_store
 }
 
-/// > lock happened at 5_689_148
-/// >
-/// > get all **hash** and **parent mmr root** from 5_680_000
-///
-/// 1. build empty tree, index up to 5_730_720 with size 11_461_429
-/// 2. insert peaks
-///    1. get peaks state at 5_680_000
-///    2. insert
-/// 3. start append/merge process
-/// 4. verify if 5_680_001 is correct (corner case)
-fn main() {
-	// let block_number = 5_730_720;
-	// let mmr_size = mmr::leaf_index_to_mmr_size(block_number - 1);
+fn read_nodes() -> Vec<(u64, String)> {
+	let mut f = File::open("nodes").unwrap();
+	let mut s = "".into();
 
-	// assert_eq!(mmr_size, 1_1461_429);
+	f.read_to_string(&mut s).unwrap();
 
+	let mut v = vec![];
+
+	for l in s.lines() {
+		let (pos, hash) = l.split_once(":").unwrap();
+		let pos = pos.parse().unwrap();
+
+		v.push((pos, hash.into()));
+	}
+
+	v
+}
+
+fn write_nodes<S>(mmr_store: S, from: u64, to: u64)
+where
+	S: MMRStore<Hash>,
+{
+	let mut f = File::create("nodes").unwrap();
+
+	for pos in from..=to {
+		writeln!(f, "{}:{}", pos, mmr_store.get_elem(pos).unwrap().unwrap()).unwrap();
+	}
+
+	f.sync_all().unwrap();
+}
+
+#[allow(unused)]
+fn gen_nodes() {
 	let start_at = 4_999_999;
 	let mem_store = build_mem_store(start_at);
 	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(mmr::leaf_index_to_mmr_size(start_at), mem_store);
@@ -142,9 +188,27 @@ fn main() {
 	{
 		let root = array_bytes::bytes2hex("", mem_mmr.get_root().unwrap().0);
 
-		dbg!((block_number, &expected_root, &root));
+		// dbg!((block_number, &expected_root, &root));
 		assert_eq!(expected_root, root);
 
 		mem_mmr.push(array_bytes::hex_into_unchecked(hash)).unwrap();
 	}
+
+	write_nodes(mem_mmr.store(), 11272187, 11403258);
+}
+
+fn check_nodes() {
+	let nodes = read_nodes();
+
+	for (pos, expected_hash) in nodes {
+		let hash = get_node_from_rpc("http://107.167.190.243:9977", pos);
+
+		dbg!((pos, &expected_hash, &hash));
+
+		assert_eq!(expected_hash, hash);
+	}
+}
+
+fn main() {
+	check_nodes();
 }
