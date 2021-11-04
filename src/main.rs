@@ -103,12 +103,12 @@ fn correct_node_hashes_snap(uri: &str) {
 
 			(pos, hash)
 		})
-		.collect::<VecDeque<_>>();
+		.collect::<Vec<_>>();
 	let mut checklist = File::create("checklist.data").unwrap();
 
 	'l: loop {
 		if let Ok((mut ws, _)) = tungstenite::connect(uri) {
-			while let Some((pos, hash)) = mmr_data.get(0) {
+			while let Some((pos, hash)) = mmr_data.last() {
 				if ws
 					.write_message(Message::Binary(
 						serde_json::to_vec(&rpc::get_node_hash_payload(*pos)).unwrap(),
@@ -149,7 +149,7 @@ fn correct_node_hashes_snap(uri: &str) {
 					println!("process: {}", pos);
 				}
 
-				mmr_data.pop_front().unwrap();
+				mmr_data.pop().unwrap();
 			}
 
 			return;
@@ -158,7 +158,7 @@ fn correct_node_hashes_snap(uri: &str) {
 }
 
 fn main() {
-	let uri = "ws://localhost:39998";
+	let uri = "ws://localhost:30000";
 
 	// correct_node_hashes_live(
 	// 	uri,
