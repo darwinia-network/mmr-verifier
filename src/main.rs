@@ -242,8 +242,10 @@ fn correct_node_live(
 				return correct_node_live(uri, file, hashes, mem_mmr, block_number);
 			}
 
-			if block_number % 100 == 0 {
-				let start_block_number = block_number - 10;
+			let step: u64 = 1000;
+
+			if block_number % step == 0 {
+				let start_block_number = block_number - step;
 				let end_block_number = block_number;
 				let mut start_pos = mmr::leaf_index_to_mmr_size(start_block_number);
 
