@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // --- std ---
 use std::{
 	fs::File,

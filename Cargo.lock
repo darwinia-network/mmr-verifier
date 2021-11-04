@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "array-bytes"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8fb297b55a15d4b1ca38e1d8f6f0063d318e60981560298a503e5ae3ebed20c"
+checksum = "9ad284aeb45c13f2fb4f084de4a420ebf447423bdf9386c0540ce33cb3ef4b8c"
 
 [[package]]
 name = "arrayvec"
@@ -568,9 +568,9 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "subrpcer"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b968be843ba53518b7e506bb662c2f3db76c01a2196d9459f620c187c1f59270"
+checksum = "d709c3b11765920fc6098f34b711f38e1ed480f78b4b3358a1acbc2c1c1b2e48"
 dependencies = [
  "serde",
  "serde_json",

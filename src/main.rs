@@ -1,15 +1,17 @@
+#![allow(dead_code)]
+
 mod hash;
-mod rpc;
 mod util;
 
 // --- std ---
 use std::{
 	fs::File,
 	io::{Read, Write},
+	mem,
 };
 // --- crates.io ---
 use serde_json::Value;
-use subrpcer::chain;
+use subrpcer::{chain, offchain};
 use tungstenite::Message;
 // --- github.com ---
 use mmr::{
@@ -21,9 +23,11 @@ use hash::{Hash, Hasher};
 
 // Use a live chain as the source of block hashes.
 fn correct_node_hashes_live(uri: &str) {
-	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(0, MemStore::default());
-	let mut checklist = File::create("checklist.data").unwrap();
-	let mut empty_nodes = File::create("empty-nodes.data").unwrap();
+	let mut mmr_size = 0;
+	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(mmr_size, MemStore::default());
+	let mut block_hashes = vec![];
+	let mut block_hashes_file = File::create("block-hashes.livedata").unwrap();
+	let mut mmr_file = File::create("mmr.livedata").unwrap();
 
 	'l: loop {
 		if let Ok((mut ws, _)) = tungstenite::connect(uri) {
@@ -37,12 +41,17 @@ fn correct_node_hashes_live(uri: &str) {
 					continue 'l;
 				}
 
-				let block_hash = if let Ok(msg) = ws.read_message() {
-					if let Some(hash) = serde_json::from_slice::<Value>(&msg.into_data()).unwrap()
-						["result"]
+				if let Ok(msg) = ws.read_message() {
+					if let Some(block_hash) = serde_json::from_slice::<Value>(&msg.into_data())
+						.unwrap()["result"]
 						.as_str()
 					{
-						hash.to_string()
+						mem_mmr
+							.push(array_bytes::hex_into_unchecked(block_hash))
+							.unwrap();
+						block_hashes.extend_from_slice(
+							format!("{},{}\n", block_number, block_hash).as_bytes(),
+						);
 					} else {
 						continue 'l;
 					};
@@ -50,35 +59,42 @@ fn correct_node_hashes_live(uri: &str) {
 					continue 'l;
 				};
 
-				// if let Ok(msg) = ws.read_message() {
-				// 	let node_hash = if let Some(hash) =
-				// 		serde_json::from_slice::<Value>(&msg.into_data()).unwrap()["result"]
-				// 			.as_str()
-				// 	{
-				// 		hash.to_string()
-				// 	} else {
-				// 		writeln!(empty_nodes, "{},{}", pos, util::offchain_key(*pos)).unwrap();
+				if block_number % 100 == 0 {
+					block_hashes_file
+						.write_all(&mem::take(&mut block_hashes))
+						.unwrap();
+					mmr_file
+						.write_all(
+							(mmr_size..mem_mmr.mmr_size)
+								.into_iter()
+								.map(|pos| {
+									format!(
+										"{},{}\n",
+										pos,
+										array_bytes::bytes2hex(
+											"0x",
+											mem_mmr.store().get_elem(pos).unwrap().unwrap().0,
+										)
+									)
+									.into_bytes()
+								})
+								.flatten()
+								.collect::<Vec<_>>()
+								.as_slice(),
+						)
+						.unwrap();
 
-				// 		"".into()
-				// 	};
+					mmr_size = mem_mmr.mmr_size;
 
-				// if node_hash.is_empty() || hash != &node_hash {
-				// 		if ws
-				// 			.write_message(Message::Binary(
-				// 				serde_json::to_vec(&rpc::insert_node_hash_payload(*pos, &hash))
-				// 					.unwrap(),
-				// 			))
-				// 			.is_ok()
-				// 		{
-				// 			let check = format!("{},{}", pos, hash);
+					println!("process: {}, {}", block_number, mmr_size);
+				}
 
-				// 			println!("{}", check);
-				// 			writeln!(checklist, "{}", check).unwrap();
-				// 		} else {
-				// 			continue 'l;
-				// 		}
-				// 	}
-				// } else {
+				// if ws
+				// 	.write_message(Message::Binary(
+				// 		serde_json::to_vec(&rpc::insert_node_hash_payload(*pos, &block_hash)).unwrap(),
+				// 	))
+				// 	.is_err()
+				// {
 				// 	continue 'l;
 				// }
 			}
@@ -96,62 +112,27 @@ fn correct_node_hashes_snap(uri: &str) {
 	let mut mmr_data = mmr_data
 		.lines()
 		.map(|line| {
-			let (pos, hash) = line.split_once(',').unwrap();
+			let (pos, node_hash) = line.split_once(',').unwrap();
 			let pos = pos.parse().unwrap();
 
-			(pos, hash)
+			(pos, node_hash)
 		})
 		.collect::<Vec<_>>();
-	let mut checklist = File::create("checklist.data").unwrap();
-	let mut empty_nodes = File::create("empty-nodes.data").unwrap();
 
 	'l: loop {
 		if let Ok((mut ws, _)) = tungstenite::connect(uri) {
-			while let Some((pos, hash)) = mmr_data.last() {
+			while let Some((pos, node_hash)) = mmr_data.last() {
 				if ws
 					.write_message(Message::Binary(
-						serde_json::to_vec(&rpc::get_node_hash_payload(*pos)).unwrap(),
+						serde_json::to_vec(&offchain::local_storage_set(
+							"PERSISTENT",
+							util::offchain_key(*pos),
+							&node_hash,
+						))
+						.unwrap(),
 					))
 					.is_err()
 				{
-					continue 'l;
-				}
-
-				if let Ok(msg) = ws.read_message() {
-					let node_hash = if let Some(hash) =
-						serde_json::from_slice::<Value>(&msg.into_data()).unwrap()["result"]
-							.as_str()
-					{
-						hash.to_string()
-					} else {
-						"".into()
-					};
-
-					if node_hash.is_empty() || hash != &node_hash {
-						if ws
-							.write_message(Message::Binary(
-								serde_json::to_vec(&rpc::insert_node_hash_payload(*pos, &hash))
-									.unwrap(),
-							))
-							.is_ok()
-						{
-							let check = format!("{},{}", pos, hash);
-
-							if node_hash.is_empty() {
-								// writeln!(empty_nodes, "{},{}", pos, util::offchain_key(*pos))
-								// .unwrap();
-
-								println!("missed: {}", check);
-							} else {
-								// writeln!(checklist, "{}", check).unwrap();
-
-								println!("broken: {}", check);
-							}
-						} else {
-							continue 'l;
-						}
-					}
-				} else {
 					continue 'l;
 				}
 
