@@ -7,7 +7,6 @@ version = "0.1.0"
 # crates.io
 array-bytes        = { version = "*" }
 blake2-rfc         = { version = "*" }
-csv                = { version = "*" }
 mmr                = { package = "ckb-merkle-mountain-range", git = "https://github.com/darwinia-network/merkle-mountain-range", branch = "public" }
 parity-scale-codec = { version = "*" }
 serde              = { version = "*", features = ["derive"] }

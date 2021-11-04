@@ -12,4 +12,9 @@ target
 node_modules
 
 # Test Data
+block-hashes.data
+block-hashes.data.tar.zst
+block-hashes.rawdata
+checklist.data
 mmr.data
+mmr.data.tar.zst
