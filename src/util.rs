@@ -40,10 +40,8 @@ pub fn build_mmr_from_snap() {
 
 	block_hashes.sort_by_key(|(n, _)| *n);
 
-	let mut mmr_size = 0;
-	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(mmr_size, MemStore::default());
+	let mut mem_mmr = <MemMMR<Hash, Hasher>>::new(0, MemStore::default());
 	let mut block_hashes_store = vec![];
-	let mut mmr_store = vec![];
 
 	for (i, (block_number, hex_block_hash)) in block_hashes.into_iter().enumerate() {
 		if i as u64 != block_number {
@@ -56,16 +54,16 @@ pub fn build_mmr_from_snap() {
 		let block_hash = array_bytes::hex_into_unchecked(&hex_block_hash);
 
 		mem_mmr.push(block_hash).unwrap();
+	}
 
-		for pos in mmr_size..mem_mmr.mmr_size {
-			let node_hash = mem_mmr.store().get_elem(pos).unwrap().unwrap();
+	let mut mmr_store = vec![];
 
-			mmr_store.extend_from_slice(
-				format!("{},{}\n", pos, array_bytes::bytes2hex("0x", node_hash.0)).as_bytes(),
-			);
-		}
+	for pos in 0..mem_mmr.mmr_size {
+		let node_hash = mem_mmr.store().get_elem(pos).unwrap().unwrap();
 
-		mmr_size = mem_mmr.mmr_size;
+		mmr_store.extend_from_slice(
+			format!("{},{}\n", pos, array_bytes::bytes2hex("0x", node_hash.0)).as_bytes(),
+		);
 	}
 
 	let mut block_hashes_file = File::create("block-hashes.data").unwrap();

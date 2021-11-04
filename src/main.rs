@@ -124,8 +124,6 @@ fn correct_node_hashes_snap(uri: &str) {
 					{
 						hash.to_string()
 					} else {
-						writeln!(empty_nodes, "{},{}", pos, util::offchain_key(*pos)).unwrap();
-
 						"".into()
 					};
 
@@ -139,8 +137,16 @@ fn correct_node_hashes_snap(uri: &str) {
 						{
 							let check = format!("{},{}", pos, hash);
 
-							println!("{}", check);
-							writeln!(checklist, "{}", check).unwrap();
+							if node_hash.is_empty() {
+								// writeln!(empty_nodes, "{},{}", pos, util::offchain_key(*pos))
+								// .unwrap();
+
+								println!("missed: {}", check);
+							} else {
+								// writeln!(checklist, "{}", check).unwrap();
+
+								println!("broken: {}", check);
+							}
 						} else {
 							continue 'l;
 						}
@@ -149,7 +155,7 @@ fn correct_node_hashes_snap(uri: &str) {
 					continue 'l;
 				}
 
-				if *pos % 100 == 0 {
+				if *pos % 1000 == 0 {
 					println!("process: {}", pos);
 				}
 
@@ -162,7 +168,7 @@ fn correct_node_hashes_snap(uri: &str) {
 }
 
 fn main() {
-	let uri = "ws://localhost:30000";
+	let uri = "wss://rpc-alt.darwinia.network";
 
 	// util::build_mmr_from_snap();
 
