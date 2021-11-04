@@ -16,5 +16,6 @@ block-hashes.data
 block-hashes.data.tar.zst
 block-hashes.rawdata
 checklist.data
+empty-nodes.data
 mmr.data
 mmr.data.tar.zst
